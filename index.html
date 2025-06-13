@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Aviator Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Arial', sans-serif;
+      background-color: #121212;
+      color: gold;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #multiplier {
+      font-size: 48px;
+      margin-top: 50px;
+      font-weight: bold;
+    }
+    #airplane {
+      margin-top: 20px;
+      width: 60px;
+      transition: transform 0.1s linear;
+      position: relative;
+    }
+    #controls {
+      margin-top: 50px;
+      display: flex;
+      gap: 10px;
+    }
+    input, button {
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 10px;
+      border: none;
+    }
+    button {
+      background: gold;
+      color: #121212;
+      font-weight: bold;
+    }
+    #balance {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      font-size: 18px;
+    }
+    #log {
+      margin-top: 20px;
+      max-height: 100px;
+      overflow-y: auto;
+      width: 90%;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="balance">Баланс: ...</div>
+  <div id="multiplier">x1.00</div>
+  <img id="airplane" src="https://www.freeiconspng.com/uploads/airplane-png-16.png" />
+  <div id="controls">
+    <input type="number" id="betAmount" placeholder="Ставка (TON)" />
+    <button onclick="placeBet()">Ставка</button>
+    <button onclick="cashout()">Кэшаут</button>
+  </div>
+  <div id="log"></div>
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    const tg = window.Telegram.WebApp;
+    const userId = tg.initDataUnsafe?.user?.id || Math.floor(Math.random() * 100000);
+    const backendUrl = "https://backendd-wghh.onrender.com";
+    let currentMultiplier = 1.0;
+    let airplane = document.getElementById("airplane");
+
+    async function updateBalance() {
+      const res = await fetch(`${backendUrl}/balance?user_id=${userId}`);
+      const data = await res.json();
+      document.getElementById("balance").innerText = `Баланс: ${data.balance} TON`;
+    }
+
+    async function placeBet() {
+      const amount = parseFloat(document.getElementById("betAmount").value);
+      const res = await fetch(`${backendUrl}/place_bet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, amount })
+      });
+      const data = await res.json();
+      log(data.message || data.error);
+      updateBalance();
+    }
+
+    async function cashout() {
+      const res = await fetch(`${backendUrl}/cashout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId })
+      });
+      const data = await res.json();
+      log(data.message || data.error);
+      updateBalance();
+    }
+
+    function log(msg) {
+      const logBox = document.getElementById("log");
+      const line = document.createElement("div");
+      line.innerText = msg;
+      logBox.prepend(line);
+    }
+
+    function connectWebSocket() {
+      const ws = new WebSocket(`${backendUrl.replace('http', 'ws')}/ws/${userId}`);
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.event === 'update') {
+          currentMultiplier = data.multiplier;
+          document.getElementById("multiplier").innerText = `x${currentMultiplier.toFixed(2)}`;
+          airplane.style.transform = `translateX(${currentMultiplier * 20}px)`;
+        }
+        if (data.event === 'crash') {
+          log(`✈️ Ұшақ құлады! x${data.at}`);
+          airplane.style.transform = `translateX(0px)`;
+        }
+        if (data.event === 'start') {
+          log("✅ Раунд басталды");
+          currentMultiplier = 1.0;
+          document.getElementById("multiplier").innerText = `x1.00`;
+        }
+      };
+    }
+
+    updateBalance();
+    connectWebSocket();
+  </script>
+</body>
+</html>
